@@ -27,12 +27,14 @@ namespace FKTT
         }
        
         public string cddir = System.IO.Directory.GetCurrentDirectory();
-        public string mainicdir = System.IO.Directory.GetCurrentDirectory();
-        public string icdir = System.IO.Directory.GetCurrentDirectory();
+        public string tempdir = System.IO.Directory.GetCurrentDirectory() + @"\temp\";
+        public string Bdir = System.IO.Directory.GetCurrentDirectory() + @"\Backup\";
+        public string mainicdir, icdir, Backupdir, ROOTdir;
+        bool needBackup;
         public IndexContainer mainic,ic;
          DataTable dt = new DataTable();
-        
 
+        private static object locker = new object();//创建锁
 
 
 
@@ -54,7 +56,9 @@ namespace FKTT
 
             timer1.Enabled = true;
             //GetindexPatch();
-            string tempdir = cddir + @"\temp\";// + DateTime.Now.ToString("yyyyMMddHHmm") + "\\";
+            button_ChangeFonts.Enabled = false;
+            button_Installpatch.Enabled = false;
+            button_InstallROOT.Enabled = false;
             if (Directory.Exists(tempdir))
             {
                 DirectoryInfo di = new DirectoryInfo(tempdir);
@@ -62,7 +66,7 @@ namespace FKTT
               
             }
             System.IO.Directory.CreateDirectory(tempdir);
-            System.IO.Directory.SetCurrentDirectory(tempdir);
+           
         }
          private void Output(string msg)
         {
@@ -75,201 +79,168 @@ namespace FKTT
          {
             Output(msg + "\r\n");
          }
-        private static object locker = new object();//创建锁
-
+     
 
   
 
-    private void button1_Click(object sender, EventArgs e)
+        private void button1_Click(object sender, EventArgs e)
         {
             ic = null;
             treeView1.Nodes.Clear();
+            
             var ofd = new OpenFileDialog
             {
                 
                 DefaultExt = "zip",
                 
-                Filter = "zip|*.zip"
+                Filter = "zip|*.zip;_.index.bin"
 
             };
             if (ofd.ShowDialog() == DialogResult.OK)
             {
-                Thread t = new Thread(new ParameterizedThreadStart(loadpatch));
-                 t.Start(ofd.FileName);
-                Thread.Sleep(2000);
-               
-                lock (locker)//加锁               
+                label2.Text = "补丁 "+ ofd.FileName;
+                string Filedir = ofd.FileName;
+                OutputLine("loading "+ ofd.FileName);
+                while (isFilezip(Filedir))
                 {
-                    treeView1.Nodes.Add(rtn);
+                    
+                    var zz = ZipFile.OpenRead(Filedir);
+                    foreach (var item in zz.Entries)
+                    {
+                        if (isFilezip(item.Name))
+                        {
+                            item.ExtractToFile(tempdir + item.Name);
+                            Filedir = tempdir + item.Name;
+                        }
+                        if (isFilebin(item.Name))
+                        {
+                            string tdir = tempdir + DateTime.Now.ToString("HHmmss") + "\\";
+                            zz.ExtractToDirectory(tdir);
+                         Filedir = tdir + item.FullName.Replace("/","\\");
+                             
+                            goto findbin;
+                        }
+
+                    }
+
                 }
-            } 
+                findbin:
+                if (isFilebin(Filedir))
+                {
+
+                    //loadpatch(Filedir);
+
+                    Thread t = new Thread(new ParameterizedThreadStart(loadpatch));
+                    t.Start(Filedir);
+                    Thread.Sleep(2000);
+
+                    lock (locker)//加锁               
+                    {
+                        treeView1.Nodes.Add(rtn);
+                        progressBar1.Value = 0;
+                    }
+
+                }
+
+
+
+                 
+            }
 
             else
             {
-                Close();
+                MessageBox.Show("选择 正确的补丁文件 ");
+                //Close();
                 return;
             }
           
         }
-      
-        private  void loadpatch(object zipPath)
+        private bool isFilezip(string str)
+        {
+            if (str.Length > 0&& str.LastIndexOf(".") > 0)
+            {
+
+            if (str.Substring(str.LastIndexOf("."), str.Length - str.LastIndexOf(".")) == ".zip")
+            {
+                return true;
+            }
+            else
+            {
+                return false;
+            }
+        }
+            else
+            {
+                return false;
+            }
+        }
+        private bool isFilebin(string str)
+        {
+            if (str.Length > 0 && str.LastIndexOf(".") > 0)
+            {
+                if (str.Substring(str.LastIndexOf("\\") + 1, str.Length - str.LastIndexOf("\\") - 1) == "_.index.bin")
+            {
+                return true;
+            }
+            else
+            {
+                return false;
+            }
+            }
+            else
+            {
+                return false;
+            }
+        }
+        private  void loadpatch(object Filedir)
         {
             lock (locker)//加锁               
             {
-                var zz = ZipFile.OpenRead(zipPath.ToString());
 
-                foreach (var item in zz.Entries)
+                icdir = Filedir.ToString().Replace("_.index.bin", "");
+
+                System.IO.Directory.SetCurrentDirectory(icdir);
+                ic = new IndexContainer(Filedir.ToString());
+                progressBar1.Maximum = ic.Bundles.Length;
+                foreach (var item3 in ic.Bundles)
                 {
-                    if (item.Name.Contains("zip"))
+                    progressBar1.Value = item3.bundleIndex;
+                    if (File.Exists(item3.Name))
                     {
-                       
-                   
-                    if (item.Name.Substring(item.Name.LastIndexOf("."), item.Name.Length- item.Name.LastIndexOf(".")) == ".zip")
-                    {
-                        OutputLine(item.Name);
-
-                        string tempdir = cddir + @"\temp\" + DateTime.Now.ToString("yyyyMMddHHmmss") + "\\";
-                        if (!Directory.Exists(tempdir))
+                        if (item3 is BundleRecord record)
                         {
-                            System.IO.Directory.CreateDirectory(tempdir);
-                        }
+                            //loadedBundles = item3;
 
-                        item.ExtractToFile(tempdir + item.Name);
-                        var zz2 = ZipFile.OpenRead(tempdir + item.Name);
-                        foreach (var item2 in zz2.Entries)
-                        {
-                            OutputLine(item2.Name);
-                            if (item2.Name == "_.index.bin")
+                            foreach (var f in record.Files)
                             {
-                                zz2.ExtractToDirectory(tempdir);
-                                //item2.ExtractToFile(tempdir + item2.Name);
-                                tempdir = tempdir + "\\Bundles2\\";
-                                System.IO.Directory.SetCurrentDirectory(tempdir);
-                                ic = new IndexContainer(tempdir + "_.index.bin");
-                                progressBar1.Maximum = ic.Bundles.Length;
-                                foreach (var item3 in ic.Bundles)
-                                {
-                                    progressBar1.Value = item3.bundleIndex;
-                                    if (File.Exists(item3.Name))
-                                    {
-                                        if (item3 is BundleRecord record)
-                                        {
-                                            //loadedBundles = item3;
 
-                                            foreach (var f in record.Files)
-                                            {
+                                DataRow dr1 = dt.NewRow();
+                                dr1[1] = f.path;
+                                dt.Rows.Add(dr1);
 
-                                                DataRow dr1 = dt.NewRow();
-                                                dr1[1] = f.path;
-                                                dt.Rows.Add(dr1);
-
-
-                                            }
-
-                                        }
-                                    }
-
-                                }
-                                //var fr = ic.FindFiles[IndexContainer.FNV1a64Hash("Metadata/UI/UISettings.xml")];
-
-                                //string result = Encoding.Unicode.GetString(fr.Read());
-
-                                // MessageBox.Show(result);
 
                             }
+
                         }
                     }
-                    }
-                }
+
+
+
+
+                } 
 
                 addNodes();
 
-                OutputLine("done");
+                OutputLine("loadpatch done");
             }
              
         }
-      
-        private  void loadpatchbak(object zipPath)
-        {
-
-            var zz = ZipFile.OpenRead(zipPath.ToString());
-
-            foreach (var item in zz.Entries)
-            {
-                if (item.Name.Substring(item.Name.IndexOf(".") + 1) == "zip")
-                {
-                    OutputLine(item.Name);
-
-                    string tempdir = cddir + @"\temp\" + DateTime.Now.ToString("yyyyMMddHHmm") + "\\";
-                    if (!Directory.Exists(tempdir))
-                    {
-                        System.IO.Directory.CreateDirectory(tempdir);
-                    }
-
-                    item.ExtractToFile(tempdir + item.Name);
-                    var zz2 = ZipFile.OpenRead(tempdir + item.Name);
-                    foreach (var item2 in zz2.Entries)
-                    {
-                        OutputLine(item2.Name);
-                        if (item2.Name == "_.index.bin")
-                        {
-                            zz2.ExtractToDirectory(tempdir);
-                            //item2.ExtractToFile(tempdir + item2.Name);
-                            tempdir = tempdir + "\\Bundles2\\";
-                            System.IO.Directory.SetCurrentDirectory(tempdir);
-                            ic = new IndexContainer(tempdir + "_.index.bin");
-                            progressBar1.Maximum = ic.Bundles.Length;
-                            foreach (var item3 in ic.Bundles)
-                            {
-                                progressBar1.Value = item3.bundleIndex;
-                                if (File.Exists(item3.Name))
-                                {
-                                    if (item3 is BundleRecord record)
-                                    {
-                                        //loadedBundles = item3;
-
-                                        foreach (var f in record.Files)
-                                        {
-
-                                            DataRow dr1 = dt.NewRow();
-                                            dr1[1] = f.path;
-                                            dt.Rows.Add(dr1);
-
-
-                                        }
-
-                                    }
-                                }
-
-                            }
-                            //var fr = ic.FindFiles[IndexContainer.FNV1a64Hash("Metadata/UI/UISettings.xml")];
-
-                            //string result = Encoding.Unicode.GetString(fr.Read());
-
-                            // MessageBox.Show(result);
-
-                        }
-                    }
-                }
-
-            }
-
-            addNodes();
-
-            OutputLine("done");
-
-        }
+       
 
         private void button2_Click(object sender, EventArgs e)
         {
             patchic(@"C:\Users\hzxg\Desktop\POE\ROOT\");
         }
-
-
-
-
-
-
         private void treeView1_AfterCheck(object sender, TreeViewEventArgs e)
         {
 
@@ -329,60 +300,36 @@ namespace FKTT
         private void button3_Click(object sender, EventArgs e)
         {
             //System.IO.Directory.SetCurrentDirectory(mainicdir);
-            // mainic =new IndexContainer(mainicdir + "_.index.bin");
-            var fr = mainic.FindFiles[IndexContainer.FNV1a64Hash("Metadata/UI/UISettings.xml")];
-            string result = Encoding.Unicode.GetString(fr.Read());
 
-            MessageBox.Show(result);
+            //var fr = mainic.FindFiles[IndexContainer.FNV1a64Hash("Metadata/UI/UISettings.xml")];
+            //string result = Encoding.Unicode.GetString(fr.Read());
+
+            //MessageBox.Show(result);
 
             //System.IO.Directory.SetCurrentDirectory(icdir);
-            var fr2 = ic.FindFiles[IndexContainer.FNV1a64Hash("Metadata/UI/UISettings.xml")];
+            //var fr2 = ic.FindFiles[IndexContainer.FNV1a64Hash("Metadata/UI/UISettings.xml")];
 
 
-            string result2 = Encoding.Unicode.GetString(fr2.Read());
+            //string result2 = Encoding.Unicode.GetString(fr2.Read());
 
-            MessageBox.Show(result2);
+            //MessageBox.Show(result2);
+
+            string[] f = new string[2];
+            f[1] = "Metadata/UI/UISettings.xml";
+            string fn = f[1].ToString().Replace(f[1].ToString().Substring(0, f[1].ToString().LastIndexOf("/") + 1), "");
 
 
-
+            string fd = Backupdir +"ROOT\\"+ (f[1].ToString().Replace("/", "\\")).Replace(fn,"");
+            MessageBox.Show(fn);
+            MessageBox.Show(fd);
         }
-        public delegate void SendToMain();
+       
         private void button4_Click(object sender, EventArgs e)
         {
             Thread t = new Thread(btb);
             t.Start();
         }
-        private  void btb()
-        {
-            checkTreeViewNode(treeView1.Nodes);
-            DataRow[] dr = dt.Select("c='true'");
-            label1.Text = dr.Length.ToString();
-            string str = "Imported {0}/" + dr.Length.ToString() + " Files";
-            progressBar1.Maximum = dr.Length;
-
-            int l = loadedBundles[0].UncompressedSize;
-            BundleRecord bundleToSave = loadedBundles[0];
-
-
-            int count = 0;
-            foreach (DataRow f in dr)
-            {
-
-                var fr = mainic.FindFiles[IndexContainer.FNV1a64Hash(f[1].ToString())];
-                var fr2 = ic.FindFiles[IndexContainer.FNV1a64Hash(f[1].ToString())];
-
-
-                fr.Write(fr2.Read());
-                fr.Move(bundleToSave);
-                ++count;
-                progressBar1.Value = count ;
-                // OutputLine(string.Format(str, count));
-            }
-            if (count > 0)
-                changed.Add(bundleToSave);
-            progressBar1.Value = 0;
-           OutputLine("btb done");
-        }
+        
 
 
         public void checkTreeViewNode(TreeNodeCollection node)
@@ -503,8 +450,10 @@ namespace FKTT
         private void GetindexPatch(object indexPath)
         {
 
+           
 
-            Environment.CurrentDirectory = Path.GetDirectoryName(indexPath.ToString());
+           mainicdir = Path.GetDirectoryName(indexPath.ToString());
+            System.IO.Directory.SetCurrentDirectory(mainicdir);
             mainic = new IndexContainer(indexPath.ToString());
            
             progressBar1.Maximum = mainic.Bundles.Length;
@@ -518,6 +467,7 @@ namespace FKTT
 
             }
             OutputLine("loadMain  done");
+            button_ChangeFonts.Enabled = true;
             progressBar1.Value = 0;
         }
         private void ChangeFonts()
@@ -534,31 +484,21 @@ namespace FKTT
 
             }
             OutputLine("总共修改" + mc.Count.ToString() + "处字体");
-
-            
-
-            string backupdir = cddir + @"\Backup\"+ DateTime.Now.ToString("yyyyMMddHHmm");            
-            if (!Directory.Exists(backupdir))
+            if (needBackup)
             {
-                System.IO.Directory.CreateDirectory(backupdir);
-            }
-            string BeforeDir = backupdir + "\\Before\\ROOT\\Metadata\\UI\\";
-            if (!Directory.Exists(BeforeDir))
-            {
-                System.IO.Directory.CreateDirectory(BeforeDir);
-            }
-            File.WriteAllBytes(BeforeDir+ "UISettings.xml", fr.Read());
-            OutputLine("Before导出完成");
 
+                string fn = "UISettings.xml";
+                string fd = Backupdir + "\\ROOT\\Metadata\\UI\\";
+                if (!Directory.Exists(fd))
+                {
+                    System.IO.Directory.CreateDirectory(fd);
+                }
+                File.WriteAllBytes(fd + fn, fr.Read());
+                OutputLine("已备份到 "+ Backupdir);
+            }
+             
             byte[] b1 = Encoding.Unicode.GetBytes(result);
-            string AfterDir = backupdir + "\\After\\ROOT\\Metadata\\UI\\";
-            if (!Directory.Exists(AfterDir))
-            {
-                System.IO.Directory.CreateDirectory(AfterDir);
-            }
-            File.WriteAllBytes(AfterDir+ "UISettings.xml", b1);
-
-            OutputLine("After导出完成");
+        
              
             BundleRecord bundleToSave =  mainic.GetSmallestBundle(loadedBundles);
             fr.Write(b1); 
@@ -576,52 +516,42 @@ namespace FKTT
             BundleRecord bundleToSave = loadedBundles[0];
          
                 var fileNames = Directory.GetFiles(SPatch.ToString(), "*", SearchOption.AllDirectories);
-                string str = "Imported {0}/" + fileNames.Length.ToString() + " Files";
+            //string str = "Imported {0}/" + fileNames.Length.ToString() + " Files";
+            progressBar1.Maximum = fileNames.Length;
+            OutputLine("wroking.......");
                 int count = 0;
                 foreach (var f in fileNames)
                 {
-                    var path = f.Remove(0, SPatch.ToString().Length ).Replace("\\", "/");
-                MessageBox.Show(path);
+                progressBar1.Value = count;
+                   var path = f.Remove(0, SPatch.ToString().Length ).Replace("\\", "/");
+            
                     var fr = mainic.FindFiles[IndexContainer.FNV1a64Hash(path)];
-                    fr.Write(File.ReadAllBytes(f));
+                if (needBackup)
+                {
+
+                    string fn = path.ToString().Replace(path.ToString().Substring(0, path.ToString().LastIndexOf("/") + 1), "");
+
+
+                    string fd = Backupdir + "ROOT\\" + (path.ToString().Replace("/", "\\")).Replace(fn, "");
+                    if (!Directory.Exists(fd))
+                    {
+                        System.IO.Directory.CreateDirectory(fd);
+                    }
+                    File.WriteAllBytes(fd + fn, fr.Read());
+                }
+                fr.Write(File.ReadAllBytes(f));
                     fr.Move(bundleToSave);
                     ++count;
-                    OutputLine(string.Format(str, count));
+                    //OutputLine(string.Format(str, count));
                 }
                 if (count > 0)
                 changed.Add(bundleToSave);
-
-
-
-        }
-        private void patchROOTDir()
-        {
-            //选择 补丁ROOT文件夹   
-            BundleRecord bundleToSave =  mainic.GetSmallestBundle(loadedBundles);
-
-            FolderBrowserDialog dialog = new FolderBrowserDialog();
-
-            if (dialog.ShowDialog() == DialogResult.OK)
-            {
-                var fileNames = Directory.GetFiles(dialog.SelectedPath, "*", SearchOption.AllDirectories);
-                string str = "Imported {0}/" + fileNames.Length.ToString() + " Files";
-                int count = 0;
-                foreach (var f in fileNames)
-                {
-                    var path = f.Remove(0, dialog.SelectedPath.Length + 1).Replace("\\", "/");
-                    var fr =  mainic.FindFiles[IndexContainer.FNV1a64Hash(path)];
-                    fr.Write(File.ReadAllBytes(f));
-                    fr.Move(bundleToSave);
-                    ++count;
-                    OutputLine(string.Format(str, count));
-                }
-                if (count > 0)
-                    changed.Add(bundleToSave);
-            }
-
+            OutputLine("done.......");
+            progressBar1.Value = 0;
 
 
         }
+       
         private void button_loadMain_Click(object sender, EventArgs e)
         {
             mainic = null;
@@ -636,7 +566,8 @@ namespace FKTT
             if (ofd.ShowDialog() == DialogResult.OK)
             { 
                 indexPath = ofd.FileName;
-               
+                label1.Text = "POE "+ ofd.FileName;
+                OutputLine("loading mainic");
             }
             else
             {
@@ -656,46 +587,81 @@ namespace FKTT
 
             }
 
-           // Thread th = new Thread(GetindexPatch);
-           // th.Start();
+            
         }
         private void button_Save_Click(object sender, EventArgs e)
         {
 
             if (changed.Count > 0)
             {
-                
-                    var i = 1;
-                    var text = "Saving {0} / " + (changed.Count + 1).ToString() + " bundles . . .";
-                    foreach (var br in changed)
-                    {
-                       OutputLine(string.Format(text, i));
-                    S:
-                        if (!File.Exists(br.Name))
-                        {
-                            if (MessageBox.Show("File Not Found:" + Environment.NewLine + Path.GetFullPath(br.Name) + "Please put the bundle to the path and click OK", "Error", MessageBoxButtons.YesNo, MessageBoxIcon.Error) == DialogResult.OK)
-                                goto S;
-                            else
-                            {
-                                MessageBox.Show(" Bundles Changed" + "Please restore the backup", "Warning", MessageBoxButtons.YesNo, MessageBoxIcon.Warning);
-                                Close();
-                                return;
-                            }
-                        }
-                        br.Save(br.Name);
-                        i++;
-                    }
-                OutputLine(string.Format(text, i));
-                 mainic.Save("_.index.bin");
-               
+                Thread th = new Thread(MainicSave);
+                th.Start();
+
+
             }
+            else
+            {
+                MessageBox.Show("没有需要保存的");
+            }
+            
+        }
+        private void MainicSave()
+        {
+            var i = 1;
+           // var text = "Saving {0} / " + (changed.Count + 1).ToString() + " bundles . . .";
+            progressBar1.Maximum = changed.Count;
+            foreach (var br in changed)
+            {
+                //OutputLine(string.Format(text, i));
+                progressBar1.Value = i;
+            S:
+                if (!File.Exists(br.Name))
+                {
+                    if (MessageBox.Show("File Not Found:" + Environment.NewLine + Path.GetFullPath(br.Name) + "Please put the bundle to the path and click OK", "Error", MessageBoxButtons.YesNo, MessageBoxIcon.Error) == DialogResult.OK)
+                        goto S;
+                    else
+                    {
+                        MessageBox.Show(" Bundles Changed" + "Please restore the backup", "Warning", MessageBoxButtons.YesNo, MessageBoxIcon.Warning);
+                        Close();
+                        return;
+                    }
+                }
+                br.Save(br.Name);
+                i++;
+            }
+            //OutputLine(string.Format(text, i));
+            mainic.Save("_.index.bin");
             OutputLine("完成保存");
             changed.Clear();
+            progressBar1.Value = 0;
         }
 
         private void button_ChangeFonts_Click(object sender, EventArgs e)
         {
-            ChangeFonts();
+
+            needBackup = false;
+            DialogResult r1 = MessageBox.Show("是否要备份", "标题", MessageBoxButtons.YesNoCancel, MessageBoxIcon.Question);
+            if (r1.ToString() == "Yes")
+            {
+                needBackup = true;
+                Backupdir = Bdir + DateTime.Now.ToString("yyyy-MM-dd HHmmss") + "\\";
+                if (!Directory.Exists(Backupdir))
+                {
+                    System.IO.Directory.CreateDirectory(Backupdir);
+                }
+
+                MessageBox.Show("备份文件夹 " + Backupdir);
+            }
+            if (r1.ToString().Equals("No"))
+            {
+            }
+            if (r1.ToString().Equals("Cancel"))
+            {
+                goto cfend;
+            }
+            Thread t = new Thread(new ParameterizedThreadStart(patchic));
+            t.Start(ROOTdir);
+        cfend:;
         }
 
 
@@ -716,9 +682,240 @@ namespace FKTT
 
         }
         int ti;
+
+        private void treeView1_AfterSelect(object sender, TreeViewEventArgs e)
+        {
+            
+          //textBox1.Text = treeView1.SelectedNode.Text;
+        }
+
+        private void button_loadPacth_Click(object sender, EventArgs e)
+        {
+            ic = null;
+            treeView1.Nodes.Clear();
+
+            var ofd = new OpenFileDialog
+            {
+
+                DefaultExt = "zip",
+
+                Filter = "zip|*.zip;_.index.bin"
+
+            };
+            if (ofd.ShowDialog() == DialogResult.OK)
+            {
+                label2.Text = "补丁 " + ofd.FileName;
+                string Filedir = ofd.FileName;
+                OutputLine("loading " + ofd.FileName);
+                while (isFilezip(Filedir))
+                {
+
+                    var zz = ZipFile.OpenRead(Filedir);
+                    int i = 0;
+                    foreach (var item in zz.Entries)
+                    {
+                       
+                        if (isFilezip(item.Name))
+                        {
+                            item.ExtractToFile(tempdir + item.Name);
+                            Filedir = tempdir + item.Name;
+                            i++;
+                        }
+                        if (isFilebin(item.Name))
+                        {
+                            string tdir = tempdir + DateTime.Now.ToString("HHmmss") + "\\";
+                            zz.ExtractToDirectory(tdir);
+                            Filedir = tdir + item.FullName.Replace("/", "\\");
+                            i++;
+                            goto findbin;
+                        }
+
+                    }
+                    if (i==0)
+                    {
+                        goto findbin;
+                    }
+
+                }
+            findbin:
+                if (isFilebin(Filedir))
+                {
+
+                    //loadpatch(Filedir);
+
+                    Thread t = new Thread(new ParameterizedThreadStart(loadpatch));
+                    t.Start(Filedir);
+                    Thread.Sleep(2000);
+
+                    lock (locker)//加锁               
+                    {
+                        treeView1.Nodes.Add(rtn);
+                        progressBar1.Value = 0;
+                        button_Installpatch.Enabled = true;
+                        button_InstallROOT.Enabled = false;
+                    }
+
+                }
+                else
+                {
+                    MessageBox.Show("选择 正确的补丁文件 ");
+                }
+
+
+
+
+            }
+
+            else
+            {
+                 
+                MessageBox.Show("选择 正确的补丁文件 ");
+                //Close();
+                return;
+            }
+        }
+
+        private void button_Installpatch_Click(object sender, EventArgs e)
+        {
+            Thread t = new Thread(btb);
+            t.Start();
+        }
+
+        private void button_loadROOT_Click(object sender, EventArgs e)
+        {
+            FolderBrowserDialog dialog = new FolderBrowserDialog();
+                         dialog.Description = "请选择  ROOT 文件路径";
+                        dialog.SelectedPath = Bdir;
+            //dialog.RootFolder = Environment.SpecialFolder.Programs;
+            if (dialog.ShowDialog() == DialogResult.OK)
+            {
+                string foldPath = dialog.SelectedPath;
+                if (foldPath.Substring(foldPath.Length - 4, 4) == "ROOT")
+                {
+
+                    label2.Text = foldPath;
+                    ROOTdir = foldPath;
+                    button_Installpatch.Enabled = false;
+                    button_InstallROOT.Enabled = true;
+                }
+                else
+                {
+                    MessageBox.Show("请选择正确的  ROOT 文件路径");
+                }
+            }
+        }
+
+        private void button_InstallROOT_Click(object sender, EventArgs e)
+        {
+            needBackup = false;
+            DialogResult r1 = MessageBox.Show("是否要备份", "标题", MessageBoxButtons.YesNoCancel, MessageBoxIcon.Question);
+            if (r1.ToString() == "Yes")
+            {
+                needBackup = true;
+                Backupdir = Bdir + DateTime.Now.ToString("yyyy-MM-dd HHmmss") + "\\";
+                if (!Directory.Exists(Backupdir))
+                {
+                    System.IO.Directory.CreateDirectory(Backupdir);
+                }
+
+                MessageBox.Show("备份文件夹 " + Backupdir);
+            }
+            if (r1.ToString().Equals("No"))
+            {
+            }
+            if (r1.ToString().Equals("Cancel"))
+            {
+                goto cfend;
+            }
+            Thread th = new Thread(ChangeFonts);
+            th.Start();
+        cfend:;
+        }
+
+        private void btb()
+        {
+            checkTreeViewNode(treeView1.Nodes);
+            DataRow[] dr = dt.Select("c='true'");
+            if (dr.Length >0)
+            {
+                needBackup = false;
+                   DialogResult r1 = MessageBox.Show("是否要备份", "标题", MessageBoxButtons.YesNoCancel, MessageBoxIcon.Question);
+                if (r1.ToString() == "Yes")
+                {
+                    needBackup = true;
+                  string  Backupdir = Bdir + DateTime.Now.ToString("yyyy-MM-dd HHmmss") + "\\";
+                    if (!Directory.Exists(Backupdir))
+                    {
+                        System.IO.Directory.CreateDirectory(Backupdir);
+                    }
+                     
+                    MessageBox.Show("备份文件夹 "+ Backupdir); }
+                if (r1.ToString().Equals("No"))
+                {   }
+                if (r1.ToString().Equals("Cancel"))
+                { 
+                    goto btbend;
+                }
+
+                //string str = "Imported {0}/" + dr.Length.ToString() + " Files";
+             progressBar1.Maximum = dr.Length;
+            //BundleRecord bundleToSave = mainic.GetSmallestBundle(loadedBundles);
+            int l = loadedBundles[0].UncompressedSize;
+            BundleRecord bundleToSave = loadedBundles[0];
+            foreach (var b in loadedBundles)
+            {
+                if (b.UncompressedSize < l)
+                {
+                    l = b.UncompressedSize;
+                    bundleToSave = b;
+                }
+            }
+            //BundleRecord bundleToSave = mainic.GetSmallestBundle(loadedBundles);
+            int count = 0;
+            foreach (DataRow f in dr)
+            {
+
+                System.IO.Directory.SetCurrentDirectory(icdir);
+                var fr2 = ic.FindFiles[IndexContainer.FNV1a64Hash(f[1].ToString())];
+
+                byte[] fr2data = fr2.Read();
+
+                System.IO.Directory.SetCurrentDirectory(mainicdir);
+                var fr = mainic.FindFiles[IndexContainer.FNV1a64Hash(f[1].ToString())];
+                    if (needBackup)
+                    {
+
+                        string fn = f[1].ToString().Replace(f[1].ToString().Substring(0, f[1].ToString().LastIndexOf("/") + 1), "");
+
+
+                        string fd = Backupdir + "ROOT\\" + (f[1].ToString().Replace("/", "\\")).Replace(fn, "");
+                        if (!Directory.Exists(fd))
+                        {
+                            System.IO.Directory.CreateDirectory(fd);
+                        }
+                        File.WriteAllBytes(fd + fn, fr.Read());
+                    }
+                fr.Write(fr2data);
+                fr.Move(bundleToSave);
+                ++count;
+                progressBar1.Value = count;
+                // OutputLine(string.Format(str, count));
+            }
+            if (count > 0)
+                changed.Add(bundleToSave);
+            progressBar1.Value = 0;
+            OutputLine("btb done");
+
+            btbend:;
+            }
+            else
+            {
+                MessageBox.Show("选取补丁内容");
+            }
+    }
         private void treeView1_DoubleClick(object sender, EventArgs e)
         {
-            ti  = 1;
+           ti  = 1;
             treeView1.Enabled = false;
         }
 
