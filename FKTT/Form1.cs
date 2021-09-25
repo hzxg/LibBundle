@@ -61,6 +61,7 @@ namespace FKTT
             button_ChangeFonts.Enabled = false;
             button_Installpatch.Enabled = false;
             button_InstallROOT.Enabled = false;
+            button_etc.Enabled = false;
             if (Directory.Exists(tempdir))
             {
                 DirectoryInfo di = new DirectoryInfo(tempdir);
@@ -68,7 +69,7 @@ namespace FKTT
 
             }
             System.IO.Directory.CreateDirectory(tempdir);
-
+             
         }
         private void button1_Click(object sender, EventArgs e)
         {
@@ -159,34 +160,34 @@ namespace FKTT
 
             txt_stat_descriptions = new string[] {
                 "active_skill_gem_stat_descriptions.txt",
-                //"advanced_mod_stat_descriptions.txt",
+                "advanced_mod_stat_descriptions.txt",
                 "atlas_stat_descriptions.txt",
                 "aura_skill_stat_descriptions.txt",
                 "banner_aura_skill_stat_descriptions.txt",
                 "beam_skill_stat_descriptions.txt",
                 "brand_skill_stat_descriptions.txt",
-                "buff_skill_stat_descriptions.txt",
+                //"buff_skill_stat_descriptions.txt",
                 "chest_stat_descriptions.txt",
                 "curse_skill_stat_descriptions.txt",
                 "debuff_skill_stat_descriptions.txt",
-                //"expedition_relic_stat_descriptions.txt",
-                //"gem_stat_descriptions.txt",
-                //"heist_equipment_stat_descriptions.txt",
-                //"leaguestone_stat_descriptions.txt",
-                //"map_stat_descriptions.txt",
-                //"minion_attack_skill_stat_descriptions.txt",
-                //"minion_skill_stat_descriptions.txt",
-                //"minion_spell_damage_skill_stat_descriptions.txt",
-                //"minion_spell_skill_stat_descriptions.txt",
-                //"monster_stat_descriptions.txt",
-                //"offering_skill_stat_descriptions.txt",
-                //"passive_skill_aura_stat_descriptions.txt",
-                //"passive_skill_stat_descriptions.txt",
-                //"secondary_debuff_skill_stat_descriptions.txt",
-                //"single_minion_spell_skill_stat_descriptions.txt",
+                "expedition_relic_stat_descriptions.txt",
+                "gem_stat_descriptions.txt",
+                "heist_equipment_stat_descriptions.txt",
+                "leaguestone_stat_descriptions.txt",
+                "map_stat_descriptions.txt",
+                "minion_attack_skill_stat_descriptions.txt",
+                "minion_skill_stat_descriptions.txt",
+                "minion_spell_damage_skill_stat_descriptions.txt",
+                "minion_spell_skill_stat_descriptions.txt",
+                "monster_stat_descriptions.txt",
+                "offering_skill_stat_descriptions.txt",
+                "passive_skill_aura_stat_descriptions.txt",
+                "passive_skill_stat_descriptions.txt",
+                "secondary_debuff_skill_stat_descriptions.txt",
+                "single_minion_spell_skill_stat_descriptions.txt",
                 //"skill_stat_descriptions.txt",
                 "stat_descriptions.txt",
-                //"variable_duration_skill_stat_descriptions.txt"
+                "variable_duration_skill_stat_descriptions.txt"
             };
 
 
@@ -195,6 +196,7 @@ namespace FKTT
         {
             string path = "Metadata/StatDescriptions/";
             string fdb= tempdir + "Before\\ROOT\\" + (path.ToString().Replace("/", "\\"));
+            
             if (!Directory.Exists(fdb))
             {
                 System.IO.Directory.CreateDirectory(fdb);
@@ -204,13 +206,17 @@ namespace FKTT
             {
                 System.IO.Directory.CreateDirectory(fda);
             }
+            progressBar1.Maximum = txt_stat_descriptions.Length;
+            int i = 0;
+            OutputLine("load......");
             foreach (var item in txt_stat_descriptions)
             {
+                progressBar1.Value = i;
                 var fr = mainic.FindFiles[IndexContainer.FNV1a64Hash(path+ item)];
                 
                     string fn = item;  
                     File.WriteAllBytes(fdb + fn, fr.Read());
-                
+                i++;
             }
             var fileNames = Directory.GetFiles(fdb, "*", SearchOption.AllDirectories);
             foreach (var f in fileNames)
@@ -283,10 +289,7 @@ namespace FKTT
 
             }
 
-
-
-
-            OutputLine("读取完毕,总共：" + (_description_Counts - 1).ToString() + "个词缀");
+           
 
 
         }
@@ -397,7 +400,7 @@ namespace FKTT
 
             sw.Flush();
             sw.Close();
-            OutputLine("导出完成");
+           
         }
 
         private void button_loadMain_Click(object sender, EventArgs e)
@@ -414,7 +417,7 @@ namespace FKTT
             if (ofd.ShowDialog() == DialogResult.OK)
             {
                 indexPath = ofd.FileName;
-                label1.Text = "POE " + ofd.FileName;
+               
                 OutputLine("loading mainic");
             }
             else
@@ -455,6 +458,7 @@ namespace FKTT
             }
             OutputLine("loadMain  done");
             button_ChangeFonts.Enabled = true;
+            button_etc.Enabled = true;
             progressBar1.Value = 0;
         }
         private void button_Save_Click(object sender, EventArgs e)
@@ -584,7 +588,7 @@ namespace FKTT
             };
             if (ofd.ShowDialog() == DialogResult.OK)
             {
-                label2.Text = "补丁 " + ofd.FileName;
+              
                 string Filedir = ofd.FileName;
                 OutputLine("loading " + ofd.FileName);
                 while (isFilezip(Filedir))
@@ -833,7 +837,7 @@ namespace FKTT
                 if (foldPath.Substring(foldPath.Length - 4, 4) == "ROOT")
                 {
 
-                    label2.Text = foldPath;
+                   
                     ROOTdir = foldPath;
                     loadROOT(ROOTdir);
                     button_Installpatch.Enabled = false;
@@ -988,7 +992,7 @@ namespace FKTT
                 {
                     path = path.Substring(1, path.Length - 1);
                 }
-                OutputLine(path+" done");
+               
                 var fr = mainic.FindFiles[IndexContainer.FNV1a64Hash(path)];
                 if (needBackup)
                 {
@@ -1146,6 +1150,35 @@ namespace FKTT
             }
             return tnT;
         }
+        private void button_etc_Click(object sender, EventArgs e)
+        {
+            CDB();
+
+            needBackup = false;
+            DialogResult r1 = MessageBox.Show("是否要备份", "标题", MessageBoxButtons.YesNoCancel, MessageBoxIcon.Question);
+            if (r1.ToString() == "Yes")
+            {
+                needBackup = true;
+                Backupdir = Bdir + DateTime.Now.ToString("yyyy-MM-dd HHmmss") + "\\";
+                if (!Directory.Exists(Backupdir))
+                {
+                    System.IO.Directory.CreateDirectory(Backupdir);
+                }
+
+                MessageBox.Show("备份文件夹 " + Backupdir);
+            }
+            if (r1.ToString().Equals("No"))
+            {
+            }
+            if (r1.ToString().Equals("Cancel"))
+            {
+                goto cfend;
+            }
+            Thread t = new Thread(txtetc);
+            t.Start();
+        cfend:;
+        }
+
         TreeNode rtn;
         public void addNodes()
         {
